@@ -24,11 +24,12 @@
 */
 package com.github.baudekin
 
+import org.apache.spark
 import org.apache.spark.sql.execution.streaming.MemoryStream
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.streaming.{OutputMode, Trigger}
 import org.apache.spark.sql.types._
-import org.apache.spark.sql.{SaveMode, SparkSession}
+import org.apache.spark.sql.{Row, SaveMode, SparkSession}
 
 import scala.concurrent.duration._
 
@@ -54,10 +55,9 @@ object GenerateRowsExample {
     import org.apache.spark.sql.Encoders
     val schema = Encoders.product[GenResults].schema
 
-    val inSeq = Seq(GenResults("ValueOne", 10, 10.99))
     val rowsIn = MemoryStream[GenResults]
     val row = GenResults("ValueOne", 10, 10.99)
-    //rowsIn.addData(row)
+    rowsIn.addData(row)
 
     // Create structure of the in memory stream. Set is up as individual time windows that are 5 seconds in size and count the number of records recieved
     // inside of that time window
@@ -72,18 +72,42 @@ object GenerateRowsExample {
       format("memory").
       option("path", "json").
       queryName("MemoryQuery").
-      outputMode(OutputMode.Update).
+    //  outputMode(OutputMode.Update).
+      outputMode(OutputMode.Append).
       start
+
+    // Simulate Step of Doubling of Column Three
+    val stepOne = spark.table("MemoryQuery").selectExpr("ColumnOne", "ColumnTwo", "ColumnThree", "ColumnTwo * 2 ColumnFour",  "Now").toDF()
+    // Simulate Step of Doubling of ColumnFour
+    val stepTwo = stepOne.selectExpr("ColumnOne", "ColumnTwo", "ColumnThree", "ColumnFour", "ColumnFour * 2 ColumnFive",  "Now").toDF()
+    // Simulating Always getting the latest row note this is nevers updates it is always initialized to the first row
+    val stepThree = spark.sparkContext.parallelize(
+      Seq(
+        stepTwo.reduce {
+          (x, y) => if (x.getAs[Int]("Now") > y.getAs[Int]("Now")) x else y
+        }
+      )
+    ).toJavaRDD()
+
+    val latest = stepTwo.orderBy($"Now".desc)
 
     while (true) {
       Thread.sleep(5000)
       rowsIn.addData(row)
       outputStream.processAllAvailable()
+      println("#######")
       println("####### Process Row")
+      println("#######")
       spark.table("MemoryQuery").collect() foreach println
+      println("####### Step Two")
+      // false tells show not to truncation columns
+      stepTwo.show(false)
+      println("####### Step Three:")
+      stepThree.rdd.foreach( r => { println(r) })
+      println("####### Latest:")
+      // Show only first row and don't truncate it
+      latest.show(1, false)
     }
-
-    //step.toDF().write.mode(SaveMode.Overwrite).json("/user/mbodkin/fileoutstep")
     outputStream.stop()
   }
 }
