@@ -57,7 +57,7 @@ object GenerateRowsExample {
     val inSeq = Seq(GenResults("ValueOne", 10, 10.99))
     val rowsIn = MemoryStream[GenResults]
     val row = GenResults("ValueOne", 10, 10.99)
-    rowsIn.addData(row)
+    //rowsIn.addData(row)
 
     // Create structure of the in memory stream. Set is up as individual time windows that are 5 seconds in size and count the number of records recieved
     // inside of that time window
@@ -70,35 +70,19 @@ object GenerateRowsExample {
     val outputStream = inDF.
       writeStream.
       format("memory").
-//      format("json").
       option("path", "json").
       queryName("MemoryQuery").
       outputMode(OutputMode.Update).
-//      outputMode(OutputMode.Append).
-      trigger(Trigger.ProcessingTime(1.seconds)).
       start
 
-    println("#######:isActive:" + outputStream.isActive )
-    println("#######:status..:" + outputStream.status )
+    while (true) {
+      Thread.sleep(5000)
+      rowsIn.addData(row)
+      outputStream.processAllAvailable()
+      println("####### Process Row")
+      spark.table("MemoryQuery").collect() foreach println
+    }
 
-    // Add data to the in memory stream
-    outputStream.processAllAvailable()
-    println("#######:lastProgress:")
-    outputStream.lastProgress.sources foreach println
-    println("#######:MemoryQuerycollect:")
-    spark.table("MemoryQuery").collect() foreach println
-
-    // Add More Data
-    rowsIn.addData(row)
-    outputStream.processAllAvailable()
-    println("#######:lastProgress:")
-    outputStream.lastProgress.sources foreach println
-    println("#######:MemoryQuerycollect:")
-    spark.table("MemoryQuery").collect() foreach println
-
-
-    // Wait for the collect to finish and then stop the stream
-    Thread.sleep(1000)
     //step.toDF().write.mode(SaveMode.Overwrite).json("/user/mbodkin/fileoutstep")
     outputStream.stop()
   }
