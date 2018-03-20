@@ -47,7 +47,6 @@ object GenerateRowsExample {
     return row
   }
 
-  // This based off of Jace Klaskowsiki's example see https://github.com/jaceklaskowski/spark-structured-streaming-book/blob/master/spark-sql-streaming-MemoryStream.adoc
   // The Spark 2.2.0 Structured Streaming Programming Guide is located here: https://spark.apache.org/docs/2.2.0/structured-streaming-programming-guide.html
   def main(args: Array[String]): Unit = {
     // You need atleast two threads to use the streaming API
@@ -89,7 +88,8 @@ object GenerateRowsExample {
     val stepOne = spark.table("MemoryQuery").selectExpr("ColumnOne", "ColumnTwo", "ColumnThree", "ColumnTwo * 2 ColumnFour", "Current", "FiveSecondsAgo",  "Now").toDF()
     // Simulate Step of Doubling of ColumnFour
     val stepTwo = stepOne.selectExpr("ColumnOne", "ColumnTwo", "ColumnThree", "ColumnFour", "ColumnFour * 2 ColumnFive", "Current", "FiveSecondsAgo",  "Now").toDF()
-    // Simulating Always getting the latest row note this is nevers updates it is always initialized to the first row
+    // Simulating Always getting the latest row note this is nevers updates it is always initialized to the first row because we
+    // terminate it with parallelize
     val stepThree = spark.sparkContext.parallelize(
       Seq(
         stepTwo.reduce {
@@ -98,11 +98,12 @@ object GenerateRowsExample {
       )
     ).toJavaRDD()
 
+    // Proper way is to order the RDD then when we want the last row we pull it off
     val latest = stepTwo.orderBy($"Now".desc)
 
+    // Never stop Generating Data we should run out of memory at some point
     while (true) {
       Thread.sleep(5000)
-      rowsIn.addData(createData)
       outputStream.processAllAvailable()
       println("#######")
       println("####### Process Row")
@@ -116,6 +117,7 @@ object GenerateRowsExample {
       println("####### Latest:")
       // Show only first row and don't truncate it
       latest.show(1, false)
+      rowsIn.addData(createData)
     }
     outputStream.stop()
   }
