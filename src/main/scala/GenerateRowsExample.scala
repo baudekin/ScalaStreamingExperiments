@@ -24,6 +24,8 @@
 */
 package com.github.baudekin
 
+import java.util.Calendar
+
 import org.apache.spark
 import org.apache.spark.sql.execution.streaming.MemoryStream
 import org.apache.spark.sql.functions._
@@ -35,7 +37,15 @@ import scala.concurrent.duration._
 
 object GenerateRowsExample {
 
-  case class GenResults(ColumnOne: String, ColumnTwo: Integer, ColumnThree: Double)
+  case class GenResults(ColumnOne: String, ColumnTwo: Integer, ColumnThree: Double, Current: Long, FiveSecondsAgo: Long)
+  private var _fiveSecondsAgo: Long = 0
+
+  private def createData: GenResults = {
+    val now = Calendar.getInstance().getTimeInMillis()
+    val row = GenResults("ValueOne", 10, 10.99, now, _fiveSecondsAgo)
+    _fiveSecondsAgo = now
+    return row
+  }
 
   // This based off of Jace Klaskowsiki's example see https://github.com/jaceklaskowski/spark-structured-streaming-book/blob/master/spark-sql-streaming-MemoryStream.adoc
   // The Spark 2.2.0 Structured Streaming Programming Guide is located here: https://spark.apache.org/docs/2.2.0/structured-streaming-programming-guide.html
@@ -56,8 +66,7 @@ object GenerateRowsExample {
     val schema = Encoders.product[GenResults].schema
 
     val rowsIn = MemoryStream[GenResults]
-    val row = GenResults("ValueOne", 10, 10.99)
-    rowsIn.addData(row)
+    rowsIn.addData(createData)
 
     // Create structure of the in memory stream. Set is up as individual time windows that are 5 seconds in size and count the number of records recieved
     // inside of that time window
@@ -77,9 +86,9 @@ object GenerateRowsExample {
       start
 
     // Simulate Step of Doubling of Column Three
-    val stepOne = spark.table("MemoryQuery").selectExpr("ColumnOne", "ColumnTwo", "ColumnThree", "ColumnTwo * 2 ColumnFour",  "Now").toDF()
+    val stepOne = spark.table("MemoryQuery").selectExpr("ColumnOne", "ColumnTwo", "ColumnThree", "ColumnTwo * 2 ColumnFour", "Current", "FiveSecondsAgo",  "Now").toDF()
     // Simulate Step of Doubling of ColumnFour
-    val stepTwo = stepOne.selectExpr("ColumnOne", "ColumnTwo", "ColumnThree", "ColumnFour", "ColumnFour * 2 ColumnFive",  "Now").toDF()
+    val stepTwo = stepOne.selectExpr("ColumnOne", "ColumnTwo", "ColumnThree", "ColumnFour", "ColumnFour * 2 ColumnFive", "Current", "FiveSecondsAgo",  "Now").toDF()
     // Simulating Always getting the latest row note this is nevers updates it is always initialized to the first row
     val stepThree = spark.sparkContext.parallelize(
       Seq(
@@ -93,7 +102,7 @@ object GenerateRowsExample {
 
     while (true) {
       Thread.sleep(5000)
-      rowsIn.addData(row)
+      rowsIn.addData(createData)
       outputStream.processAllAvailable()
       println("#######")
       println("####### Process Row")
