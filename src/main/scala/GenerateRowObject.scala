@@ -47,7 +47,7 @@ object GenerateRowObject {
     return row
   }
 
-  private def startStream(spark: SparkSession): Unit = {
+  def startStream(spark: SparkSession): Unit = {
     // Required to implicit to setup behind the scenes resolutions
     implicit val isc = spark.sqlContext
     import spark.implicits._
