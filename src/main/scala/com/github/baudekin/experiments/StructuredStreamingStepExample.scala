@@ -22,12 +22,12 @@
 * THE SOFTWARE.
 *
 */
-package com.github.baudekin
+package com.github.baudekin.experiments
 
-import org.apache.spark.sql.{SaveMode, SparkSession}
 import org.apache.spark.sql.execution.streaming.MemoryStream
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.streaming.{OutputMode, Trigger}
+import org.apache.spark.sql.{SaveMode, SparkSession}
 
 import scala.concurrent.duration._
 

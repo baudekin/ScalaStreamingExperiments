@@ -22,7 +22,7 @@
 * THE SOFTWARE.
 *
 */
-package com.github.baudekin
+package com.github.baudekin.experiments
 
 import org.apache.spark.SparkConf
 import org.apache.spark.rdd.RDD

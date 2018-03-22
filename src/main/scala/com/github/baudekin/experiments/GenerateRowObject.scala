@@ -22,22 +22,19 @@
 * THE SOFTWARE.
 *
 */
-package com.github.baudekin
-
-import org.apache.spark
-import org.apache.spark.sql.execution.streaming.MemoryStream
-import org.apache.spark.sql.functions._
-import org.apache.spark.sql.streaming.{OutputMode, Trigger}
-import org.apache.spark.sql.types._
-import org.apache.spark.sql.{Row, SaveMode, SparkSession}
-
-import scala.concurrent.duration._
+package com.github.baudekin.experiments
 
 import java.util.Calendar
+
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.execution.streaming.MemoryStream
+import org.apache.spark.sql.functions._
+import org.apache.spark.sql.streaming.OutputMode
 
 object GenerateRowObject {
 
   case class GenResults(ColumnOne: String, ColumnTwo: Integer, ColumnThree: Double, Current: Long, LastTime: Long)
+
   private var _lastTimeStamp: Long = 0
 
   private def createData: GenResults = {
@@ -48,6 +45,7 @@ object GenerateRowObject {
   }
 
   def startStream(spark: SparkSession): Unit = {
+    spark.conf.set("spark.sql.broadcastTimeout", 100000000)
     // Required to implicit to setup behind the scenes resolutions
     implicit val isc = spark.sqlContext
     import spark.implicits._
@@ -71,49 +69,78 @@ object GenerateRowObject {
     val outputStream = inDF.
       writeStream.
       format("memory").
-      option("path", "json").
+      //option("path", "json").
       queryName("MemoryQuery").
       //  outputMode(OutputMode.Update).
-      outputMode(OutputMode.Append).
-      start
+      outputMode(OutputMode.Append).start()
+
 
     // Simulate Step of Doubling of Column Three
-    val stepOne = spark.table("MemoryQuery").selectExpr("ColumnOne", "ColumnTwo", "ColumnThree", "ColumnTwo * 2 ColumnFour", "Current", "LastTime",  "Now").toDF()
+    val stepOne = spark.table("MemoryQuery").selectExpr("ColumnOne", "ColumnTwo", "ColumnThree", "ColumnTwo * 2 ColumnFour", "Current", "LastTime", "Now").toDF()
     // Simulate Step of Doubling of ColumnFour
-    val stepTwo = stepOne.selectExpr("ColumnOne", "ColumnTwo", "ColumnThree", "ColumnFour", "ColumnFour * 2 ColumnFive", "Current", "LastTime",  "Now").toDF()
-    // Simulating Always getting the latest row note this is nevers updates it is always initialized to the first row because we
-    // terminate it with parallelize
-    val stepThree = spark.sparkContext.parallelize(
-      Seq(
-        stepTwo.reduce {
-          (x, y) => if (x.getAs[Int]("Now") > y.getAs[Int]("Now")) x else y
+    val stepTwo = stepOne.selectExpr("ColumnOne", "ColumnTwo", "ColumnThree", "ColumnFour", "ColumnFour * 2 ColumnFive", "Current", "LastTime", "Now").toDF()
+
+    try {
+      // Simulating Always getting the latest row note this is nevers updates it is always initialized to the first row because we
+      // terminate it with parallelize
+      /*
+      val stepThree = spark.sparkContext.parallelize(
+        Seq(
+          stepTwo.reduce {
+            (x, y) => if (x.getAs[Int]("Now") > y.getAs[Int]("Now")) x else y
+          }
+        )
+      ).toJavaRDD()
+      */
+
+      // Proper way is to order the RDD then when we want the last row we pull it off
+      val latest = stepTwo.orderBy($"Now".desc)
+      // Never stop Generating Data we should run out of memory at some point
+      //while (true) {
+      for (i <- 0 to 20) {
+        try {
+          Thread.sleep(5000)
+        } catch {
+          case iex: java.lang.InterruptedException => {
+            Thread.currentThread().interrupt()
+          }
         }
-      )
-    ).toJavaRDD()
-
-    // Proper way is to order the RDD then when we want the last row we pull it off
-    val latest = stepTwo.orderBy($"Now".desc)
-
-    // Never stop Generating Data we should run out of memory at some point
-    while (true) {
-      Thread.sleep(5000)
-      outputStream.processAllAvailable()
-      println("#######")
-      println("####### Process Row")
-      println("#######")
-      spark.table("MemoryQuery").collect() foreach println
-      println("####### Step Two")
-      // false tells show not to truncation columns
-      stepTwo.show(false)
-      println("####### Step Three:")
-      stepThree.rdd.foreach( r => { println(r) })
-      println("####### Latest:")
-      // Show only first row and don't truncate it
-      latest.show(1, false)
-      rowsIn.addData(createData)
+        outputStream.processAllAvailable()
+        println("#######")
+        println("####### Process Row")
+        println("#######")
+        spark.table("MemoryQuery").collect() foreach println
+        println("####### Step Two")
+        // false tells show not to truncation columns
+        stepTwo.show(false)
+        /*
+        println("####### Step Three:")
+        stepThree.rdd.foreach( r => { println(r) })
+        */
+        println("####### Latest:")
+        // Show only first row and don't truncate it
+        latest.show(1, false)
+        rowsIn.addData(createData)
+        println("index: " + i)
+      } // End of Loop
+    } catch {
+      case tex: java.util.concurrent.TimeoutException => {
+        tex.printStackTrace()
+      }
+      case iex: java.lang.InterruptedException => {
+        iex.printStackTrace()
+      }
+      case e: Exception => e.printStackTrace()
+      case r: RuntimeException => r.printStackTrace()
+    } finally {
+      outputStream.awaitTermination()
+      println("Before Stream Stop")
+      outputStream.stop()
+      println("After Stream Stop")
+      println("Before Spark Stop")
+      spark.stop()
+      println("After Spark Stop")
     }
-    outputStream.stop()
-
   }
 
 }
