@@ -96,8 +96,7 @@ object GenerateRowObject {
       // Proper way is to order the RDD then when we want the last row we pull it off
       val latest = stepTwo.orderBy($"Now".desc)
       // Never stop Generating Data we should run out of memory at some point
-      //while (true) {
-      for (i <- 0 to 20) {
+      while (true) {
         try {
           Thread.sleep(5000)
         } catch {
@@ -121,7 +120,6 @@ object GenerateRowObject {
         // Show only first row and don't truncate it
         latest.show(1, false)
         rowsIn.addData(createData)
-        println("index: " + i)
       } // End of Loop
     } catch {
       case tex: java.util.concurrent.TimeoutException => {
