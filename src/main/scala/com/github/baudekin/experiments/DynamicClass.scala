@@ -24,38 +24,40 @@
 */
 package com.github.baudekin.experiments
 
-import java.util.Calendar
+import scala.collection.mutable.{Map, HashMap}
 
+import org.apache.spark
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.execution.streaming.MemoryStream
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.streaming.OutputMode
+import org.apache.spark.sql.execution.streaming.MemoryStream
 
-object GenerateRowObject {
 
-  case class GenResults(ColumnOne: String, ColumnTwo: Integer, ColumnThree: Double, Current: Long, LastTime: Long)
+object DynamicClass {
 
-  private var _lastTimeStamp: Long = 0
+  case class MyMap(map: HashMap[String, String])
 
-  private def createData: GenResults = {
-    val now = Calendar.getInstance.getTimeInMillis
-    val row = GenResults("ValueOne", 10, 10.99, now, _lastTimeStamp)
-    _lastTimeStamp = now
-    return row
-  }
+  def main(args: Array[String]): Unit = {
 
-  def startStream(spark: SparkSession): Unit = {
-    spark.conf.set("spark.sql.broadcastTimeout", 100000000)
+    val spark = SparkSession.builder
+      .appName("DynamicClass")
+      .getOrCreate()
+
     // Required to implicit to setup behind the scenes resolutions
     implicit val isc = spark.sqlContext
     import spark.implicits._
     // Requires the above two line to resolve the Int encoder and SQL context
     // at runtime Always watchout for the needs of scala implecits
     // MemoryStream is an memory based stream avaiable in scala but not Java
-    import org.apache.spark.sql.Encoders
 
-    val rowsIn = MemoryStream[GenResults]
-    rowsIn.addData(createData)
+    val rowsIn = MemoryStream[MyMap]
+    val mymap = new HashMap[String, String]
+    mymap.put("ColumnOne", "foobar")
+    mymap.put("ColumnTwo", "1")
+    mymap.put("ColumnThree", "10.99")
+    val data = MyMap(mymap)
+    rowsIn.addData(data)
 
     // Create structure of the in memory stream. Set is up as individual time windows that are 5 seconds in size and count the number of records recieved
     // inside of that time window
@@ -74,26 +76,11 @@ object GenerateRowObject {
       outputMode(OutputMode.Append).start()
 
 
-    // Simulate Step of Doubling of Column Three
-    val stepOne = spark.table("MemoryQuery").selectExpr("ColumnOne", "ColumnTwo", "ColumnThree", "ColumnTwo * 2 ColumnFour", "Current", "LastTime", "Now").toDF()
-    // Simulate Step of Doubling of ColumnFour
-    val stepTwo = stepOne.selectExpr("ColumnOne", "ColumnTwo", "ColumnThree", "ColumnFour", "ColumnFour * 2 ColumnFive", "Current", "LastTime", "Now").toDF()
+    // Initial Record
+    val stepOne = spark.sql("SELECT cast(Now as int) Now, map['ColumnOne'] as ColumnOne, cast(map['ColumnTwo'] as Integer) ColumnTwo, cast(map['ColumnThree'] as Double) ColumnThree FROM MemoryQuery")
+    val orderByNow = stepOne.orderBy($"Now".desc)
 
     try {
-      // Simulating Always getting the latest row note this is nevers updates it is always initialized to the first row because we
-      // terminate it with parallelize
-      /*
-      val stepThree = spark.sparkContext.parallelize(
-        Seq(
-          stepTwo.reduce {
-            (x, y) => if (x.getAs[Int]("Now") > y.getAs[Int]("Now")) x else y
-          }
-        )
-      ).toJavaRDD()
-      */
-
-      // Proper way is to order the RDD then when we want the last row we pull it off
-      val latest = stepTwo.orderBy($"Now".desc)
       // Never stop Generating Data we should run out of memory at some point
       while (true) {
         try {
@@ -104,21 +91,12 @@ object GenerateRowObject {
           }
         }
         outputStream.processAllAvailable()
-        println("#######")
-        println("####### Process Row")
-        println("#######")
-        spark.table("MemoryQuery").collect() foreach println
-        println("####### Step Two")
-        // false tells show not to truncation columns
-        stepTwo.show(false)
-        /*
-        println("####### Step Three:")
-        stepThree.rdd.foreach( r => { println(r) })
-        */
-        println("####### Latest:")
-        // Show only first row and don't truncate it
-        latest.show(1, false)
-        rowsIn.addData(createData)
+        stepOne.show()
+        val last = orderByNow.head(1)
+        println("*****Last: ")
+        println(last.toList(0))
+
+        rowsIn.addData(data)
       } // End of Loop
     } catch {
       case tex: java.util.concurrent.TimeoutException => {
@@ -139,5 +117,4 @@ object GenerateRowObject {
       println("After Spark Stop")
     }
   }
-
 }
