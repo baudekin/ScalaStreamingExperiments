@@ -133,3 +133,23 @@ class GenerateRowStreamer(stepId: String,
     queryStream.awaitTermination(seconds)
   }
 }
+object GenerateRowStreamer {
+  def main(args: Array[String]): Unit = {
+
+    val spark = SparkSession.builder
+      .appName("StructuredStreamingStepExample")
+      .getOrCreate()
+
+    val names: List[String] = "ColumnOne" :: "ColumnTwo" :: "ColumnThree" :: Nil
+    val values: List[String] = "This is a String" :: "100" :: "10.999" :: Nil
+    val types: List[String] = "String" :: "Integer" :: "Double" :: Nil
+
+    val grs:GenerateRowStreamer = new GenerateRowStreamer("My_Step_ID", names, types, values)
+    val rdd: DataFrame = grs.getRddStream
+    grs.addRow()
+    grs.processAllPendingAdditions()
+
+    rdd.show()
+    spark.stop()
+  }
+}
