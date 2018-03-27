@@ -162,7 +162,7 @@ object GenerateRowStreamer {
 
     grs.processAllPendingAdditions()
     rdd.show(false)
-    val res = javaRdd.reduce( (r1:Row, r2:Row) => if (r1.getInt(2) > r2.getInt(2)) r1 else r2)
+    val res = javaRdd.reduce( (r1:Row, r2:Row) => if (r1.getInt(2) > r2.getInt(2)) r1 else r2 )
     println("Result:" + res)
     spark.stop()
   }
