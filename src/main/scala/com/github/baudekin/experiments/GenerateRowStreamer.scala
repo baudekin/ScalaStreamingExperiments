@@ -36,13 +36,15 @@ import scala.collection.immutable.Map
 import language.postfixOps
 
 
+// Map class for structured output stream needs to be defined
+// outside the class GenerateRowStreamer
+case class MemMap(map: Map[String, String])
+
 class GenerateRowStreamer(stepId: String,
                           columnNames: List[String],
                           columnTypes: List[String],
                           columnValues: List[String] ) {
 
-  // Map class for structured output stream
-  case class MemMap(map: Map[String, String])
 
   // These are variables not values do to the complexity
   // of creating these. They are created as a side effect
