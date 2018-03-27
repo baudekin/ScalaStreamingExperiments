@@ -25,7 +25,7 @@
 package com.github.baudekin.experiments
 
 import org.apache.spark.SparkContext
-import org.apache.spark.sql.{DataFrame, SQLContext, SparkSession}
+import org.apache.spark.sql.{DataFrame, Row, SQLContext, SparkSession}
 import org.apache.spark.sql.execution.streaming.MemoryStream
 import org.apache.spark.sql.streaming.{OutputMode, StreamingQuery}
 
@@ -135,6 +135,7 @@ class GenerateRowStreamer(stepId: String,
     queryStream.awaitTermination(seconds)
   }
 }
+
 object GenerateRowStreamer {
   def main(args: Array[String]): Unit = {
 
@@ -149,9 +150,20 @@ object GenerateRowStreamer {
     val grs:GenerateRowStreamer = new GenerateRowStreamer("My_Step_ID", names, types, values)
     val rdd: DataFrame = grs.getRddStream
     grs.addRow()
-    grs.processAllPendingAdditions()
-
     rdd.show()
+    val javaRdd = rdd.toJavaRDD
+
+    for  (i:Int <- 1 to 10){
+      val intStr:String = i.toString
+      val doubleStr:String= (i + 0.9998).toString
+      val values: List[String] = "This is a modified data set." :: intStr :: doubleStr :: Nil
+      grs.addRow(values)
+    }
+
+    grs.processAllPendingAdditions()
+    rdd.show(false)
+    val res = javaRdd.reduce( (r1:Row, r2:Row) => if (r1.getInt(2) > r2.getInt(2)) r1 else r2)
+    println("Result:" + res)
     spark.stop()
   }
 }
