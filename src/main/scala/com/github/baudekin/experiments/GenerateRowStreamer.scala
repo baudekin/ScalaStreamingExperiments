@@ -12,8 +12,7 @@ import scala.collection.immutable.Map
 import language.postfixOps
 
 
-class GenerateRowStreamer(spark: SparkSession,
-                          stepId: String,
+class GenerateRowStreamer(stepId: String,
                           columnNames: List[String],
                           columnTypes: List[String],
                           columnValues: List[String] ) {
@@ -33,15 +32,20 @@ class GenerateRowStreamer(spark: SparkSession,
 
   def primeRddStream(): Unit = {
 
+    val spark: SparkSession = {
+      SparkSession.builder().getOrCreate()
+    }
+
     // Required to implicit to setup behind the scenes resolutions must
     // be defined before memoryStreamMaps and outputStream
     implicit val isc: SparkContext = {
-      this.spark.sparkContext
+      spark.sparkContext
     }
     import spark.implicits._
     implicit val sqlCtx: SQLContext = {
-      this.spark.sqlContext
+      spark.sqlContext
     }
+
     // Requires the above two line to resolve the Int encoder and SQL context
     // at runtime Always watchout for the needs of scala implecits
     // MemoryStream is an memory based stream avaiable in scala but not Java
