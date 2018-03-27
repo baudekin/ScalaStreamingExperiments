@@ -44,23 +44,28 @@ class GenerateRowStreamer(stepId: String,
   // Map class for structured output stream
   case class MemMap(map: Map[String, String])
 
+  // These are varibles not values do to the complexity
+  // of chreating these. They are created as a side effect
+  // to running primeRddStream()
   private var memoryStreamMaps: MemoryStream[MemMap] = _
-  private var rddStream: DataFrame = _
-  private var outputStream: StreamingQuery = _
+  private var query: StreamingQuery = _
 
   // Zip up the column names and values to create key value
   // Map with the column names being the key
   private val mapData = (columnNames zip columnValues) toMap
   private val schemaData = (columnNames zip columnTypes) toMap
+  // Prime the stream and set the RDD to pass back
+  private val rddStream: DataFrame = primeRddStream()
 
-  def primeRddStream(): Unit = {
+  private def primeRddStream(): DataFrame = {
 
+    // Get the current spark session it must already be defined
     val spark: SparkSession = {
       SparkSession.builder().getOrCreate()
     }
 
     // Required to implicit to setup behind the scenes resolutions must
-    // be defined before memoryStreamMaps and outputStream
+    // be defined before memoryStreamMaps and query
     implicit val isc: SparkContext = {
       spark.sparkContext
     }
@@ -69,7 +74,7 @@ class GenerateRowStreamer(stepId: String,
       spark.sqlContext
     }
 
-    // Requires the above two functions to resolve the Int encoder and SQL context
+    // Requires the above two enclosures above to resolve the encoders and SQL context
     // at runtime. Always watch out for the needs of scala implicits!!!
     // MemoryStream is an memory based stream available in scala but not Java
     memoryStreamMaps = MemoryStream[MemMap]
@@ -82,7 +87,7 @@ class GenerateRowStreamer(stepId: String,
     // Use OutputMode append and collect at the end.  Write to the stream based on a time trigger set for every 3 seconds. Must be close to but greater then
     // half the time window. In sures accurate spread of records if there generation is uniform. Note MemoryStream is designed for testing and does not offer
     // full fault recovery.
-    this.outputStream = memStreamDF.
+    this.query = memStreamDF.
       writeStream.
       format("memory").
       queryName(this.stepId).
@@ -98,27 +103,22 @@ class GenerateRowStreamer(stepId: String,
       sql
     }
 
-    // Initial RDD
-    this.rddStream = spark.sql(sqlText = sqlValue)
-  }
-
-
-  private def produce(data: MemMap): Unit =  {
-    this.memoryStreamMaps.addData(data)
+    // Return the Initial RDD
+    spark.sql(sqlText = sqlValue)
   }
 
   def processAllPendingAdditions(): Unit =  {
-    this.outputStream.processAllAvailable()
+    query.processAllAvailable()
   }
 
   def addRow(): Unit = {
-    this.produce(MemMap(this.mapData))
+    this.memoryStreamMaps.addData(MemMap(this.mapData))
   }
 
   def addRow(locValues: List[String]): Unit = {
     val dataMap = (columnNames zip locValues) toMap
     val data = MemMap(dataMap)
-    this.produce(data)
+    this.memoryStreamMaps.addData(data)
   }
 
   def getRddStream: DataFrame = {
@@ -127,10 +127,10 @@ class GenerateRowStreamer(stepId: String,
   }
 
   def waitOnStreamToTerminate(): Unit = {
-    outputStream.awaitTermination()
+    query.awaitTermination()
   }
 
   def waitOnStreamToTerminate(seconds: Long): Unit = {
-    outputStream.awaitTermination(seconds)
+    query.awaitTermination(seconds)
   }
 }
