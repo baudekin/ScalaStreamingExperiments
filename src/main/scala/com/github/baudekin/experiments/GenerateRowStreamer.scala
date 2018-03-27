@@ -44,11 +44,11 @@ class GenerateRowStreamer(stepId: String,
   // Map class for structured output stream
   case class MemMap(map: Map[String, String])
 
-  // These are varibles not values do to the complexity
-  // of chreating these. They are created as a side effect
+  // These are variables not values do to the complexity
+  // of creating these. They are created as a side effect
   // to running primeRddStream()
   private var memoryStreamMaps: MemoryStream[MemMap] = _
-  private var query: StreamingQuery = _
+  private var queryStream: StreamingQuery = _
 
   // Zip up the column names and values to create key value
   // Map with the column names being the key
@@ -57,8 +57,7 @@ class GenerateRowStreamer(stepId: String,
   // Prime the stream and set the RDD to pass back
   private val rddStream: DataFrame = primeRddStream()
 
-  private def primeRddStream(): DataFrame = {
-
+  private def primeRddStream(): DataFrame = synchronized {
     // Get the current spark session it must already be defined
     val spark: SparkSession = {
       SparkSession.builder().getOrCreate()
@@ -81,16 +80,16 @@ class GenerateRowStreamer(stepId: String,
 
     // Create structure of the in memory stream. Set is up as individual time windows that are 5 seconds in size and count the number of records received
     // inside of that time window if limit set
-    val memStreamDF = this.memoryStreamMaps.toDF()
+    val memStreamDF = memoryStreamMaps.toDF()
 
     // Create the stream and give it the name of the step. Make sure it has the complete output allows for intermediate processing. In the case of limit
     // Use OutputMode append and collect at the end.  Write to the stream based on a time trigger set for every 3 seconds. Must be close to but greater then
     // half the time window. In sures accurate spread of records if there generation is uniform. Note MemoryStream is designed for testing and does not offer
     // full fault recovery.
-    this.query = memStreamDF.
+    queryStream = memStreamDF.
       writeStream.
       format("memory").
-      queryName(this.stepId).
+      queryName(stepId).
       outputMode(OutputMode.Append).start()
 
     // Build select statement
@@ -107,30 +106,30 @@ class GenerateRowStreamer(stepId: String,
     spark.sql(sqlText = sqlValue)
   }
 
-  def processAllPendingAdditions(): Unit =  {
-    query.processAllAvailable()
+  def processAllPendingAdditions(): Unit = synchronized {
+    queryStream.processAllAvailable()
   }
 
-  def addRow(): Unit = {
-    this.memoryStreamMaps.addData(MemMap(this.mapData))
+  def addRow(): Unit = synchronized {
+    memoryStreamMaps.addData(MemMap(mapData))
   }
 
-  def addRow(locValues: List[String]): Unit = {
+  def addRow(locValues: List[String]): Unit = synchronized {
     val dataMap = (columnNames zip locValues) toMap
     val data = MemMap(dataMap)
-    this.memoryStreamMaps.addData(data)
+    memoryStreamMaps.addData(data)
   }
 
-  def getRddStream: DataFrame = {
+  def getRddStream: DataFrame = synchronized {
     // Return a copy not the original
     rddStream.toDF()
   }
 
-  def waitOnStreamToTerminate(): Unit = {
-    query.awaitTermination()
+  def waitOnStreamToTerminate(): Unit = synchronized {
+    queryStream.awaitTermination()
   }
 
-  def waitOnStreamToTerminate(seconds: Long): Unit = {
-    query.awaitTermination(seconds)
+  def waitOnStreamToTerminate(seconds: Long): Unit = synchronized {
+    queryStream.awaitTermination(seconds)
   }
 }
