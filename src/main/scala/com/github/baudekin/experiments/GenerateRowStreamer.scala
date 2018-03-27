@@ -21,9 +21,8 @@ class GenerateRowStreamer(stepId: String,
   case class MemMap(map: Map[String, String])
 
   private var memoryStreamMaps: MemoryStream[MemMap] = _
-  private var readerSql: String = ""
-  private var outputStream: StreamingQuery = _
   private var rddStream: DataFrame = _
+  private var outputStream: StreamingQuery = _
 
   // Zip up the column names and values to create key value
   // Map with the column names being the key
@@ -66,12 +65,17 @@ class GenerateRowStreamer(stepId: String,
       outputMode(OutputMode.Append).start()
 
     // Build select statement
-    readerSql = "SELECT "
-    schemaData foreach ( entry => readerSql += "cast(map['" + entry._1 + "'] as " + entry._2 + ") " + entry._1 + ", " )
-    readerSql = readerSql.substring(0, readerSql.length - 2)
-    readerSql += " FROM " + stepId
+    val sqlValue: String = {
+      var sql: String = "SELECT "
+      schemaData foreach (entry => sql += "cast(map['" + entry._1 + "'] as " + entry._2 + ") " + entry._1 + ", ")
+      sql = sql.substring(0, sql.length - 2)
+      sql += " FROM %s".format(stepId)
+      // Return sql string
+      sql
+    }
+
     // Initial RDD
-    this.rddStream = spark.sql(readerSql)
+    this.rddStream = spark.sql(sqlText = sqlValue)
   }
 
 
@@ -99,10 +103,10 @@ class GenerateRowStreamer(stepId: String,
   }
 
   def waitOnStreamToTerminate(): Unit = {
-    this.outputStream.awaitTermination()
+    outputStream.awaitTermination()
   }
 
   def waitOnStreamToTerminate(seconds: Long): Unit = {
-    this.outputStream.awaitTermination(seconds)
+    outputStream.awaitTermination(seconds)
   }
 }
