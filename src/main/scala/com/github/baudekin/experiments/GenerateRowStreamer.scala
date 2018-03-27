@@ -1,3 +1,27 @@
+/*
+* The MIT License (MIT)
+*
+* Copyright (c) 2002 - 2018, Hitachi Vantara
+*
+* Permission is hereby granted, free of charge, to any person obtaining a copy
+* of this software and associated documentation files (the "Software"), to deal
+* in the Software without restriction, including without limitation the rights
+* to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+* copies of the Software, and to permit persons to whom the Software is
+* furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+* AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+* OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+* THE SOFTWARE.
+*
+*/
 package com.github.baudekin.experiments
 
 import org.apache.spark.SparkContext
@@ -45,18 +69,18 @@ class GenerateRowStreamer(stepId: String,
       spark.sqlContext
     }
 
-    // Requires the above two line to resolve the Int encoder and SQL context
-    // at runtime Always watchout for the needs of scala implecits
-    // MemoryStream is an memory based stream avaiable in scala but not Java
+    // Requires the above two functions to resolve the Int encoder and SQL context
+    // at runtime. Always watch out for the needs of scala implicits!!!
+    // MemoryStream is an memory based stream available in scala but not Java
     memoryStreamMaps = MemoryStream[MemMap]
 
-    // Create structure of the in memory stream. Set is up as individual time windows that are 5 seconds in size and count the number of records recieved
+    // Create structure of the in memory stream. Set is up as individual time windows that are 5 seconds in size and count the number of records received
     // inside of that time window if limit set
     val memStreamDF = this.memoryStreamMaps.toDF()
 
-    // Create the stream and give it the name of the step. Make sure it has the compele output allows for intermediate processing. In the case of limit
+    // Create the stream and give it the name of the step. Make sure it has the complete output allows for intermediate processing. In the case of limit
     // Use OutputMode append and collect at the end.  Write to the stream based on a time trigger set for every 3 seconds. Must be close to but greater then
-    // half the time window. In sures accurret spread of records if there gneration is uniform. Note MemoryStream is designed for testing and does not offer
+    // half the time window. In sures accurate spread of records if there generation is uniform. Note MemoryStream is designed for testing and does not offer
     // full fault recovery.
     this.outputStream = memStreamDF.
       writeStream.
@@ -98,7 +122,7 @@ class GenerateRowStreamer(stepId: String,
   }
 
   def getRddStream: DataFrame = {
-    // Return copy not the orignal
+    // Return a copy not the original
     rddStream.toDF()
   }
 
